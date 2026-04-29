@@ -3962,3 +3962,127 @@ func ExampleNewFromFloat() {
 	//0.123123123123123
 	//-10000000000000
 }
+
+func TestDecimal_Clamp(t *testing.T) {
+	type testData struct {
+		value    string
+		min      string
+		max      string
+		expected string
+	}
+
+	tests := []testData{
+		{"5", "0", "10", "5"},
+		{"0", "0", "10", "0"},
+		{"10", "0", "10", "10"},
+		{"-5", "0", "10", "0"},
+		{"15", "0", "10", "10"},
+		{"5.5", "0", "10", "5.5"},
+		{"-1", "-10", "10", "-1"},
+		{"-15", "-10", "10", "-10"},
+		{"15", "-10", "10", "10"},
+		{"0", "-5", "5", "0"},
+		{"-5", "-5", "5", "-5"},
+		{"5", "-5", "5", "5"},
+		{"-10", "-5", "5", "-5"},
+		{"10", "-5", "5", "5"},
+		{"3.14159", "0", "10", "3.14159"},
+		{"-3.14159", "-10", "10", "-3.14159"},
+		{"0", "0", "0", "0"},
+		{"100", "-1000", "1000", "100"},
+		{"-1000", "-1000", "1000", "-1000"},
+		{"1000", "-1000", "1000", "1000"},
+		{"-1001", "-1000", "1000", "-1000"},
+		{"1001", "-1000", "1000", "1000"},
+	}
+
+	for _, test := range tests {
+		d, err := NewFromString(test.value)
+		if err != nil {
+			t.Fatal(err)
+		}
+		min, err := NewFromString(test.min)
+		if err != nil {
+			t.Fatal(err)
+		}
+		max, err := NewFromString(test.max)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		result := d.Clamp(min, max)
+		expected, err := NewFromString(test.expected)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if !result.Equal(expected) {
+			t.Errorf("Clamp(%s, %s, %s): expected %s, got %s",
+				test.value, test.min, test.max, test.expected, result.String())
+		}
+	}
+}
+
+func TestDecimal_Clamp_Panic(t *testing.T) {
+	type testData struct {
+		min           string
+		max           string
+		expectedPanic bool
+	}
+
+	tests := []testData{
+		{"5", "10", false},
+		{"10", "10", false},
+		{"0", "0", false},
+		{"-10", "10", false},
+		{"-5", "-5", false},
+		{"10", "5", true},
+		{"0", "-10", true},
+		{"5", "-5", true},
+	}
+
+	for _, test := range tests {
+		min, err := NewFromString(test.min)
+		if err != nil {
+			t.Fatal(err)
+		}
+		max, err := NewFromString(test.max)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		d := NewFromInt(0)
+
+		if test.expectedPanic {
+			if !didPanic(func() { d.Clamp(min, max) }) {
+				t.Errorf("expected panic when Clamp with min=%s > max=%s, but no panic occurred",
+					test.min, test.max)
+			}
+		} else {
+			if didPanic(func() { d.Clamp(min, max) }) {
+				t.Errorf("unexpected panic when Clamp with min=%s <= max=%s",
+					test.min, test.max)
+			}
+		}
+	}
+}
+
+func TestDecimal_Clamp_PanicMessage(t *testing.T) {
+	min := NewFromInt(10)
+	max := NewFromInt(5)
+	d := NewFromInt(0)
+
+	defer func() {
+		if r := recover(); r != nil {
+			errMsg := fmt.Sprintf("%v", r)
+			expectedMsg := "decimal: min (10) is greater than max (5)"
+			if errMsg != expectedMsg {
+				t.Errorf("expected panic message '%s', got '%s'", expectedMsg, errMsg)
+			}
+		} else {
+			t.Error("expected panic, but no panic occurred")
+		}
+	}()
+
+	d.Clamp(min, max)
+}
